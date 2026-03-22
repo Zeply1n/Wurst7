@@ -46,13 +46,13 @@ import net.wurstclient.util.json.JsonException;
 public enum WurstClient
 {
 	INSTANCE;
-	
+
 	public static Minecraft MC;
 	public static IMinecraftClient IMC;
-	
+
 	public static final String VERSION = "7.52";
 	public static final String MC_VERSION = "1.21.11";
-	
+
 	private PlausibleAnalytics plausible;
 	private EventManager eventManager;
 	private AltManager altManager;
@@ -69,180 +69,204 @@ public enum WurstClient
 	private RotationFaker rotationFaker;
 	private FriendsList friends;
 	private WurstTranslator translator;
-	
+
 	private boolean enabled = true;
 	private static boolean guiInitialized;
 	private WurstUpdater updater;
 	private ProblematicResourcePackDetector problematicPackDetector;
-	private Path wurstFolder;
-	
+	private Path kalashFolder;
+
 	public void initialize()
 	{
-		System.out.println("Starting Wurst Client...");
-		
+		System.out.println("Starting Kalash Client...");
+
 		MC = Minecraft.getInstance();
 		IMC = (IMinecraftClient)MC;
-		wurstFolder = createWurstFolder();
-		
-		Path analyticsFile = wurstFolder.resolve("analytics.json");
+		kalashFolder = createKalashFolder();
+
+		Path analyticsFile = kalashFolder.resolve("analytics.json");
 		plausible = new PlausibleAnalytics(analyticsFile);
 		plausible.pageview("/");
-		
+
 		eventManager = new EventManager(this);
-		
-		Path enabledHacksFile = wurstFolder.resolve("enabled-hacks.json");
+
+		Path enabledHacksFile = kalashFolder.resolve("enabled-hacks.json");
 		hax = new HackList(enabledHacksFile);
-		
+
 		cmds = new CmdList();
-		
+
 		otfs = new OtfList();
-		
-		Path settingsFile = wurstFolder.resolve("settings.json");
-		settingsProfileFolder = wurstFolder.resolve("settings");
+
+		Path settingsFile = kalashFolder.resolve("settings.json");
+		settingsProfileFolder = kalashFolder.resolve("settings");
 		this.settingsFile = new SettingsFile(settingsFile, hax, cmds, otfs);
 		this.settingsFile.load();
 		hax.tooManyHaxHack.loadBlockedHacksFile();
-		
-		Path keybindsFile = wurstFolder.resolve("keybinds.json");
+
+		Path keybindsFile = kalashFolder.resolve("keybinds.json");
 		keybinds = new KeybindList(keybindsFile);
-		
-		Path guiFile = wurstFolder.resolve("windows.json");
+
+		Path guiFile = kalashFolder.resolve("windows.json");
 		gui = new ClickGui(guiFile);
-		
-		Path preferencesFile = wurstFolder.resolve("preferences.json");
+
+		Path preferencesFile = kalashFolder.resolve("preferences.json");
 		navigator = new Navigator(preferencesFile, hax, cmds, otfs);
-		
-		Path friendsFile = wurstFolder.resolve("friends.json");
+
+		Path friendsFile = kalashFolder.resolve("friends.json");
 		friends = new FriendsList(friendsFile);
 		friends.load();
-		
+
 		translator = new WurstTranslator();
-		
+
 		cmdProcessor = new CmdProcessor(cmds);
 		eventManager.add(ChatOutputListener.class, cmdProcessor);
-		
+
 		KeybindProcessor keybindProcessor =
 			new KeybindProcessor(hax, keybinds, cmdProcessor);
 		eventManager.add(KeyPressListener.class, keybindProcessor);
-		
+
 		hud = new IngameHUD();
 		eventManager.add(GUIRenderListener.class, hud);
-		
+
 		rotationFaker = new RotationFaker();
 		eventManager.add(PreMotionListener.class, rotationFaker);
 		eventManager.add(PostMotionListener.class, rotationFaker);
-		
+
 		updater = new WurstUpdater();
 		eventManager.add(UpdateListener.class, updater);
-		
+
 		problematicPackDetector = new ProblematicResourcePackDetector();
 		problematicPackDetector.start();
-		
-		Path altsFile = wurstFolder.resolve("alts.encrypted_json");
+
+		Path altsFile = kalashFolder.resolve("alts.encrypted_json");
 		Path encFolder = Encryption.chooseEncryptionFolder();
 		altManager = new AltManager(altsFile, encFolder);
 	}
-	
-	private Path createWurstFolder()
+
+	private Path createKalashFolder()
 	{
 		Path dotMinecraftFolder = MC.gameDirectory.toPath().normalize();
-		Path wurstFolder = dotMinecraftFolder.resolve("wurst");
-		
+		Path legacyFolder = dotMinecraftFolder.resolve("wurst");
+		Path kalashFolder = dotMinecraftFolder.resolve("kalash");
+
 		try
 		{
-			Files.createDirectories(wurstFolder);
-			
+			if(!Files.exists(kalashFolder) && Files.isDirectory(legacyFolder))
+				migrateClientFolder(legacyFolder, kalashFolder);
+
+			Files.createDirectories(kalashFolder);
+
 		}catch(IOException e)
 		{
 			throw new RuntimeException(
-				"Couldn't create .minecraft/wurst folder.", e);
+				"Couldn't create .minecraft/kalash folder.", e);
 		}
-		
-		return wurstFolder;
+
+		return kalashFolder;
 	}
-	
+
+	private void migrateClientFolder(Path oldFolder, Path newFolder)
+		throws IOException
+	{
+		System.out.println("Migrating client folder from " + oldFolder + " to "
+			+ newFolder);
+		Files.createDirectories(newFolder);
+
+		try(Stream<Path> files = Files.list(oldFolder))
+		{
+			for(Path oldPath : files.toList())
+			{
+				Path newPath = newFolder.resolve(oldPath.getFileName().toString());
+				Files.move(oldPath, newPath);
+			}
+		}
+
+		Files.deleteIfExists(oldFolder);
+	}
+
 	public String translate(String key, Object... args)
 	{
 		return translator.translate(key, args);
 	}
-	
+
 	public PlausibleAnalytics getPlausible()
 	{
 		return plausible;
 	}
-	
+
 	public EventManager getEventManager()
 	{
 		return eventManager;
 	}
-	
+
 	public void saveSettings()
 	{
 		settingsFile.save();
 	}
-	
+
 	public ArrayList<Path> listSettingsProfiles()
 	{
 		if(!Files.isDirectory(settingsProfileFolder))
 			return new ArrayList<>();
-		
+
 		try(Stream<Path> files = Files.list(settingsProfileFolder))
 		{
 			return files.filter(Files::isRegularFile)
 				.collect(Collectors.toCollection(ArrayList::new));
-			
+
 		}catch(IOException e)
 		{
 			throw new RuntimeException(e);
 		}
 	}
-	
+
 	public void loadSettingsProfile(String fileName)
 		throws IOException, JsonException
 	{
 		settingsFile.loadProfile(settingsProfileFolder.resolve(fileName));
 	}
-	
+
 	public void saveSettingsProfile(String fileName)
 		throws IOException, JsonException
 	{
 		settingsFile.saveProfile(settingsProfileFolder.resolve(fileName));
 	}
-	
+
 	public HackList getHax()
 	{
 		return hax;
 	}
-	
+
 	public CmdList getCmds()
 	{
 		return cmds;
 	}
-	
+
 	public OtfList getOtfs()
 	{
 		return otfs;
 	}
-	
+
+
+	public KeybindList getKeybinds()
+	{
+		return keybinds;
+	}
+
 	public Feature getFeatureByName(String name)
 	{
 		Hack hack = getHax().getHackByName(name);
 		if(hack != null)
 			return hack;
-		
+
 		Command cmd = getCmds().getCmdByName(name.substring(1));
 		if(cmd != null)
 			return cmd;
-		
+
 		OtherFeature otf = getOtfs().getOtfByName(name);
 		return otf;
 	}
-	
-	public KeybindList getKeybinds()
-	{
-		return keybinds;
-	}
-	
+
 	public ClickGui getGui()
 	{
 		if(!guiInitialized)
@@ -250,71 +274,87 @@ public enum WurstClient
 			guiInitialized = true;
 			gui.init();
 		}
-		
+
 		return gui;
 	}
-	
+
+	public static boolean isGuiInitialized()
+	{
+		return guiInitialized;
+	}
+
+	public static void setGuiInitialized(boolean guiInitialized)
+	{
+		WurstClient.guiInitialized = guiInitialized;
+	}
+
 	public Navigator getNavigator()
 	{
 		return navigator;
 	}
-	
+
 	public CmdProcessor getCmdProcessor()
 	{
 		return cmdProcessor;
 	}
-	
+
 	public IngameHUD getHud()
 	{
 		return hud;
 	}
-	
+
 	public RotationFaker getRotationFaker()
 	{
 		return rotationFaker;
 	}
-	
+
+
 	public FriendsList getFriends()
 	{
 		return friends;
 	}
-	
+
 	public WurstTranslator getTranslator()
 	{
 		return translator;
 	}
-	
+
 	public boolean isEnabled()
 	{
 		return enabled;
 	}
-	
+
 	public void setEnabled(boolean enabled)
 	{
 		this.enabled = enabled;
-		
+
 		if(!enabled)
 		{
 			hax.panicHack.setEnabled(true);
 			hax.panicHack.onUpdate();
 		}
 	}
-	
+
 	public WurstUpdater getUpdater()
 	{
 		return updater;
 	}
-	
+
 	public ProblematicResourcePackDetector getProblematicPackDetector()
 	{
 		return problematicPackDetector;
 	}
-	
+
 	public Path getWurstFolder()
 	{
-		return wurstFolder;
+		return kalashFolder;
 	}
-	
+
+	public Path getKalashFolder()
+	{
+		return kalashFolder;
+	}
+
 	public AltManager getAltManager()
 	{
 		return altManager;

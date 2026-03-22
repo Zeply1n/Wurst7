@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "wurst",
   "version": "${version}",
-  "name": "Wurst Client",
-  "description": "Wurst Wurst Wurst!",
+  "name": "Kalash Client",
+  "description": "Kalash Kalash Kalash!",
   "authors": [
     "Alexander01998"
   ],

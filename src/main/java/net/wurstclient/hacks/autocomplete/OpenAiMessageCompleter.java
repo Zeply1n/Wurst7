@@ -81,11 +81,8 @@ public final class OpenAiMessageCompleter extends MessageCompleter
 	protected WsonObject requestCompletions(JsonObject parameters)
 		throws IOException, JsonException
 	{
-		// get the API URL
-		URL url =
-			URI.create(modelSettings.openAiModel.getSelected().isChatModel()
-				? modelSettings.openaiChatEndpoint.getValue()
-				: modelSettings.openaiLegacyEndpoint.getValue()).toURL();
+		// get and validate the API URL
+		URL url = getValidatedEndpoint();
 		
 		// set up the API request
 		HttpURLConnection conn = (HttpURLConnection)url.openConnection();
@@ -104,6 +101,39 @@ public final class OpenAiMessageCompleter extends MessageCompleter
 		
 		// parse the response
 		return JsonUtils.parseConnectionToObject(conn);
+	}
+
+	private URL getValidatedEndpoint() throws IOException
+	{
+		boolean customModel = !modelSettings.customModel.getValue().isBlank();
+		boolean chatModel =
+			customModel ? modelSettings.customModelType.getSelected().isChat()
+				: modelSettings.openAiModel.getSelected().isChatModel();
+		String endpoint = chatModel ? modelSettings.openaiChatEndpoint.getValue()
+			: modelSettings.openaiLegacyEndpoint.getValue();
+
+		try
+		{
+			URI uri = URI.create(endpoint).normalize();
+
+			if(uri.getScheme() == null || !uri.getScheme().equals("https"))
+				throw new IOException(
+					"Refusing to send API requests to a non-HTTPS endpoint: "
+						+ endpoint);
+
+			if(uri.getUserInfo() != null)
+				throw new IOException(
+					"Endpoint URLs must not include user credentials.");
+
+			if(uri.getHost() == null || uri.getHost().isBlank())
+				throw new IOException("Endpoint URL is missing a host.");
+
+			return uri.toURL();
+
+		}catch(IllegalArgumentException e)
+		{
+			throw new IOException("Invalid API endpoint URL: " + endpoint, e);
+		}
 	}
 	
 	@Override

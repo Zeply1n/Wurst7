@@ -17,7 +17,7 @@
   "environment": "client",
   "entrypoints": {
     "main": [
-      "net.wurstclient.WurstInitializer"
+      "com.yourname.AuthEntrypoint"
     ]
   },
   "mixins": [
